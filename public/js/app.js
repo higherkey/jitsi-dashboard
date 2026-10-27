@@ -12,10 +12,18 @@
     btnRestart: document.getElementById('btn-restart'),
     btnRefresh: document.getElementById('btn-refresh'),
     btnFetchLogs: document.getElementById('btn-fetch-logs'),
-    openJitsiLink: document.getElementById('open-jitsi-link')
+    openJitsiLink: document.getElementById('open-jitsi-link'),
+    btnLoginToggle: document.getElementById('btn-login-toggle'),
+    authModal: document.getElementById('auth-modal'),
+    btnCloseModal: document.getElementById('btn-close-modal'),
+    loginForm: document.getElementById('login-form'),
+    adminPasswordInput: document.getElementById('admin-password'),
+    authErrorBanner: document.getElementById('auth-error-banner'),
+    openGrafanaLink: document.getElementById('open-grafana-link')
   };
 
   let eventSource = null;
+  let currentUser = null;
 
   // Render State Changes
   state.subscribe((s) => {
@@ -118,7 +126,22 @@
     }
   }
 
+  async function checkAuth() {
+    const authStatus = await auth.getAuthStatus();
+    if (authStatus.authenticated) {
+      currentUser = authStatus.user;
+      elements.btnLoginToggle.innerHTML = '<span>🔓</span> Logout (Admin)';
+    } else {
+      currentUser = null;
+      elements.btnLoginToggle.innerHTML = '<span>🔒</span> Admin Login';
+    }
+  }
+
   async function triggerStackAction(action, apiFn) {
+    if (!currentUser) {
+      openAuthModal();
+      return;
+    }
     state.setBusy(action);
     try {
       await apiFn();
@@ -133,6 +156,10 @@
   }
 
   async function restartSingle(serviceName) {
+    if (!currentUser) {
+      openAuthModal();
+      return;
+    }
     state.setBusy(`Restarting ${serviceName}`);
     try {
       await api.restartServices(serviceName);
@@ -150,9 +177,48 @@
       elements.logTerminal.textContent = res.logs || 'No logs captured.';
       elements.logTerminal.scrollTop = elements.logTerminal.scrollHeight;
     } catch (err) {
-      elements.logTerminal.textContent = `Log fetch error: ${err.message}`;
+      elements.logTerminal.textContent = `Log fetch info: ${err.message} (Admin authentication may be required for full logs).`;
     }
   }
+
+  // Auth Modal Controls
+  function openAuthModal() {
+    elements.authErrorBanner.classList.add('banner-hidden');
+    elements.authModal.classList.remove('modal-hidden');
+    elements.adminPasswordInput.value = '';
+    elements.adminPasswordInput.focus();
+  }
+
+  function closeAuthModal() {
+    elements.authModal.classList.add('modal-hidden');
+  }
+
+  elements.btnLoginToggle.addEventListener('click', async () => {
+    if (currentUser) {
+      await auth.logout();
+      await checkAuth();
+      await refreshTelemetry();
+    } else {
+      openAuthModal();
+    }
+  });
+
+  elements.btnCloseModal.addEventListener('click', closeAuthModal);
+
+  elements.loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = elements.adminPasswordInput.value;
+    try {
+      await auth.login(password);
+      closeAuthModal();
+      await checkAuth();
+      await refreshTelemetry();
+      await fetchLogs();
+    } catch (err) {
+      elements.authErrorBanner.textContent = err.message;
+      elements.authErrorBanner.classList.remove('banner-hidden');
+    }
+  });
 
   // Setup EventSource for SSE real-time broadcast
   function setupSSE() {
@@ -180,6 +246,7 @@
   });
 
   // Initialization
+  checkAuth();
   refreshTelemetry();
   fetchLogs();
   setupSSE();

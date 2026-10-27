@@ -4,9 +4,155 @@ const config = require('./config');
 const dockerService = require('./services/docker');
 const { probeEndpoint } = require('./services/health');
 const { eventBroker } = require('./services/events');
+const { createStore } = require('./services/store');
+const { RateLimiter } = require('./middleware/rate-limiter');
+const { hashPassword, verifyPassword, generateToken } = require('./utils/crypto');
 const { formatProblemDetails } = require('./utils/rfc7807');
 const { sanitizeSecrets } = require('./utils/sanitizer');
 const { serveStatic } = require('./routes/static');
+
+const store = createStore();
+const loginRateLimiter = new RateLimiter({ maxAttempts: 5, windowMs: 15 * 60 * 1000 });
+let cachedAdminHash = hashPassword(config.ADMIN_PASSWORD);
+
+function parseCookies(req) {
+  const list = {};
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return list;
+
+  cookieHeader.split(';').forEach((cookie) => {
+    let [name, ...rest] = cookie.split('=');
+    name = name?.trim();
+    if (!name) return;
+    const value = rest.join('=').trim();
+    list[name] = decodeURIComponent(value);
+  });
+
+  return list;
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.socket.remoteAddress || '127.0.0.1';
+}
+
+function isAuthenticated(req) {
+  // If request is from internal local loopback and no admin password explicitly enforced
+  const cookies = parseCookies(req);
+  const sessionId = cookies['jitsi_session'];
+  if (!sessionId) return false;
+
+  const session = store.getSession(sessionId);
+  return Boolean(session);
+}
+
+function requireAuth(req, res) {
+  if (!isAuthenticated(req)) {
+    const problem = formatProblemDetails({
+      status: 401,
+      title: 'Unauthorized',
+      detail: 'Administrative authentication is required to access this resource.',
+      instance: req.url
+    });
+    res.writeHead(401, {
+      'Content-Type': 'application/problem+json',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    res.end(JSON.stringify(problem));
+    return false;
+  }
+  return true;
+}
+
+function handleLogin(req, res) {
+  const ip = getClientIp(req);
+  const rateCheck = loginRateLimiter.check(ip);
+
+  if (!rateCheck.allowed) {
+    const problem = formatProblemDetails({
+      status: 429,
+      title: 'Too Many Requests',
+      detail: `Too many failed login attempts. Please retry in ${rateCheck.retryAfterSeconds} seconds.`,
+      instance: '/api/v1/auth/login'
+    });
+    res.writeHead(429, {
+      'Content-Type': 'application/problem+json',
+      'Retry-After': String(rateCheck.retryAfterSeconds),
+      'X-Content-Type-Options': 'nosniff'
+    });
+    return res.end(JSON.stringify(problem));
+  }
+
+  let body = '';
+  req.on('data', chunk => body += chunk);
+  req.on('end', () => {
+    let password = '';
+    try {
+      const data = JSON.parse(body);
+      password = data.password || '';
+    } catch {
+      const problem = formatProblemDetails({
+        status: 400,
+        title: 'Bad Request',
+        detail: 'Invalid JSON request payload.',
+        instance: '/api/v1/auth/login'
+      });
+      res.writeHead(400, { 'Content-Type': 'application/problem+json' });
+      return res.end(JSON.stringify(problem));
+    }
+
+    if (!verifyPassword(password, cachedAdminHash)) {
+      const problem = formatProblemDetails({
+        status: 401,
+        title: 'Authentication Failed',
+        detail: 'Invalid admin password.',
+        instance: '/api/v1/auth/login'
+      });
+      res.writeHead(401, { 'Content-Type': 'application/problem+json' });
+      return res.end(JSON.stringify(problem));
+    }
+
+    // Success: reset rate limit & issue session cookie
+    loginRateLimiter.reset(ip);
+    const sessionId = generateToken(32);
+    const maxAge = 86400; // 24 hours
+    store.createSession(sessionId, 'admin', Date.now() + maxAge * 1000);
+    store.logAudit('ADMIN_LOGIN', `Logged in from ${ip}`);
+
+    const isSecure = req.headers['x-forwarded-proto'] === 'https';
+    const cookieFlags = ['HttpOnly', 'SameSite=Strict', 'Path=/', `Max-Age=${maxAge}`];
+    if (isSecure) cookieFlags.push('Secure');
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': `jitsi_session=${sessionId}; ${cookieFlags.join('; ')}`,
+      'X-Content-Type-Options': 'nosniff'
+    });
+    res.end(JSON.stringify({ success: true, username: 'admin' }));
+  });
+}
+
+function handleLogout(req, res) {
+  const cookies = parseCookies(req);
+  const sessionId = cookies['jitsi_session'];
+  if (sessionId) {
+    store.deleteSession(sessionId);
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Set-Cookie': 'jitsi_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.end(JSON.stringify({ success: true }));
+}
+
+function handleAuthMe(req, res) {
+  const authenticated = isAuthenticated(req);
+  res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+  res.end(JSON.stringify({ authenticated, user: authenticated ? 'admin' : null }));
+}
 
 async function handleStatus(req, res) {
   try {
@@ -31,7 +177,9 @@ async function handleStatus(req, res) {
       httpsStatus: health.statusCode,
       latencyMs: health.latencyMs,
       jitsiUrl: config.HTTPS_URL,
+      grafanaUrl: config.GRAFANA_URL,
       containers,
+      authenticated: isAuthenticated(req),
       timestamp: new Date().toISOString()
     });
 
@@ -52,6 +200,8 @@ async function handleStatus(req, res) {
 }
 
 async function handleAction(req, res, action, serviceName = null) {
+  if (!requireAuth(req, res)) return;
+
   if (serviceName && !dockerService.validateServiceName(serviceName)) {
     const problem = formatProblemDetails({
       status: 400,
@@ -73,7 +223,8 @@ async function handleAction(req, res, action, serviceName = null) {
       result = await dockerService.restartServices(serviceName);
     }
 
-    // Broadcast state change to connected SSE listeners if any
+    store.logAudit(`STACK_${action.toUpperCase()}`, serviceName || 'all');
+
     if (eventBroker.clientCount() > 0) {
       setTimeout(async () => {
         try {
@@ -100,6 +251,8 @@ async function handleAction(req, res, action, serviceName = null) {
 }
 
 async function handleLogs(req, res, parsedUrl) {
+  if (!requireAuth(req, res)) return;
+
   const service = parsedUrl.searchParams.get('service');
   const tail = parsedUrl.searchParams.get('tail') || '100';
 
@@ -152,22 +305,35 @@ function handleEvents(req, res) {
 
 function createServer() {
   return http.createServer(async (req, res) => {
+    // Standard Security Headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
     const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;
 
-    // API Routes
+    // Auth endpoints
+    if (pathname === '/api/v1/auth/login' && req.method === 'POST') {
+      return handleLogin(req, res);
+    }
+    if (pathname === '/api/v1/auth/logout' && req.method === 'POST') {
+      return handleLogout(req, res);
+    }
+    if (pathname === '/api/v1/auth/me' && req.method === 'GET') {
+      return handleAuthMe(req, res);
+    }
+
+    // Telemetry & Lifecycle API
     if (pathname === '/api/v1/status' && req.method === 'GET') {
       return handleStatus(req, res);
     }
-
     if (pathname === '/api/v1/services/start' && req.method === 'POST') {
       return handleAction(req, res, 'start');
     }
-
     if (pathname === '/api/v1/services/stop' && req.method === 'POST') {
       return handleAction(req, res, 'stop');
     }
-
     if (pathname === '/api/v1/services/restart' && req.method === 'POST') {
       return handleAction(req, res, 'restart');
     }
@@ -190,7 +356,7 @@ function createServer() {
     const handled = serveStatic(req, res, pathname);
     if (handled) return;
 
-    // 404 Fallback
+    // 404
     const problem = formatProblemDetails({
       status: 404,
       detail: `Path ${pathname} not found`,
@@ -204,7 +370,7 @@ function createServer() {
 if (require.main === module) {
   const server = createServer();
   server.listen(config.PORT, config.HOST, () => {
-    console.log(`Jitsi Deck Control Center running at http://${config.HOST}:${config.PORT}`);
+    console.log(`Jitsi Dashboard running at http://${config.HOST}:${config.PORT}`);
   });
 }
 

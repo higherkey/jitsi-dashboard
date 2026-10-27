@@ -1,7 +1,7 @@
 {
-  "name": "jitsi-deck",
-  "version": "1.0.0",
-  "description": "Production-grade, lightweight web dashboard and lifecycle manager for Jitsi Meet Docker deployments",
+  "name": "jitsi-dashboard",
+  "version": "1.1.0",
+  "description": "Production-grade, lightweight web dashboard, lifecycle manager and telemetry controller for Jitsi Meet Docker deployments",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
