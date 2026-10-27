@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jitsi Deck | Meeting Infrastructure Control</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="app-header">
+      <h1 class="brand-title">
+        <span class="brand-icon">🎥</span> Jitsi Deck
+        <span id="global-badge" class="status-badge badge-offline" aria-live="polite">OFFLINE</span>
+      </h1>
+      <nav>
+        <a id="open-jitsi-link" href="https://localhost:8443" target="_blank" rel="noopener noreferrer" class="btn btn-brand">
+          <span>🚀</span> Open Jitsi Meet
+        </a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="controls-bar" aria-label="Server Operations">
+        <button id="btn-start" class="btn btn-start" type="button">
+          <span>▶</span> Start Stack
+        </button>
+        <button id="btn-stop" class="btn btn-stop" type="button">
+          <span>⏹</span> Stop Stack
+        </button>
+        <button id="btn-restart" class="btn" type="button">
+          <span>🔄</span> Restart Stack
+        </button>
+        <button id="btn-refresh" class="btn" type="button">
+          <span>↻</span> Refresh Telemetry
+        </button>
+      </section>
+
+      <section class="metrics-grid" aria-label="System Metrics">
+        <article class="card">
+          <div class="card-title">Meeting Endpoint</div>
+          <div class="card-value url-value" id="metric-endpoint">https://localhost:8443</div>
+        </article>
+        <article class="card">
+          <div class="card-title">HTTPS Web Health</div>
+          <div class="card-value" id="metric-health">
+            <span class="skeleton-text"></span>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-title">Container Fleet</div>
+          <div class="card-value" id="metric-containers">
+            <span class="skeleton-text"></span>
+          </div>
+        </article>
+      </section>
+
+      <section class="card" aria-label="Microservice Fleet">
+        <h2 class="card-title">Microservice Container Fleet</h2>
+        <div class="table-wrapper">
+          <table class="services-table">
+            <thead>
+              <tr>
+                <th scope="col">Service</th>
+                <th scope="col">Container Name</th>
+                <th scope="col">State</th>
+                <th scope="col">Status / Uptime</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="services-tbody">
+              <tr>
+                <td colspan="5">
+                  <span class="skeleton-text"></span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card logs-section" aria-label="Container Logs">
+        <div class="logs-header">
+          <h2 class="card-title">Live Log Console</h2>
+          <div class="logs-controls">
+            <label for="select-service" class="card-title">Target:</label>
+            <select id="select-service" class="select-input">
+              <option value="">All Services</option>
+              <option value="web">web</option>
+              <option value="prosody">prosody</option>
+              <option value="jicofo">jicofo</option>
+              <option value="jvb">jvb</option>
+            </select>
+            <button id="btn-fetch-logs" class="btn table-action-btn" type="button">Fetch Logs</button>
+          </div>
+        </div>
+        <pre id="log-terminal" class="log-terminal" role="region" aria-live="polite">Initializing log stream...</pre>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "jitsi-deck",
+  "version": "1.0.0",
+  "description": "Production-grade, lightweight web dashboard and lifecycle manager for Jitsi Meet Docker deployments",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/unit/*.test.js test/integration/*.test.js",
+    "test:watch": "node --test --watch test/**/*.test.js"
+  },
+  "keywords": [
+    "jitsi",
+    "jitsi-meet",
+    "dashboard",
+    "docker",
+    "docker-compose",
+    "webrtc",
+    "management"
+  ],
+  "author": "higherkey",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
