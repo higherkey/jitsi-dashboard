@@ -9,6 +9,9 @@ package-lock.json
 *.key
 *.pem
 *.crt
+data/*.db
+data/*.db-wal
+data/*.db-shm
 
 # Jitsi runtime data & config
 .jitsi-meet-cfg/
