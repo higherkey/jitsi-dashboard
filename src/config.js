@@ -1,4 +1,28 @@
 const path = require('path');
+const fs = require('fs');
+
+// Attempt to load .env if present (zero external dependencies)
+const envPath = path.resolve(__dirname, '..', '.env');
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx !== -1) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim();
+          if (key && !process.env[key]) {
+            process.env[key] = val;
+          }
+        }
+      }
+    });
+  } catch {
+    // Ignore .env read errors and fall back to environment / defaults
+  }
+}
 
 const JITSI_DIR = process.env.JITSI_DIR || path.resolve(__dirname, '..', '..');
 const PORT = parseInt(process.env.PORT, 10) || 3001;
