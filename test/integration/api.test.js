@@ -122,4 +122,17 @@ describe('Jitsi Dashboard API Integration Tests', () => {
     assert.equal(stopRes.status, 200);
     assert.equal(stopRes.json.status, 'stopped');
   });
+
+  it('provides static assets with proper headers', async () => {
+    const res = await makeRequest('/css/tokens.css');
+    assert.equal(res.status, 200);
+    assert.ok(res.headers['content-type'].includes('text/css'));
+    assert.ok(res.body.includes('--color-bg-canvas'));
+  });
+
+  it('rejects start service if service name is invalid', async () => {
+    const res = await makeRequest('/api/v1/services/invalid_service_xyz/restart', 'POST', null, authCookie);
+    assert.equal(res.status, 400);
+    assert.equal(res.json.title, 'Invalid Service Name');
+  });
 });

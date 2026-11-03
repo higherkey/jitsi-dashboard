@@ -6,6 +6,7 @@ class TunnelService extends EventEmitter {
     super();
     this.targetPort = options.targetPort || 3001;
     this.targetUrl = options.targetUrl || `http://localhost:${this.targetPort}`;
+    this.spawnFn = options.spawnFn || spawn;
     this.process = null;
     this.publicUrl = null;
     this.status = 'stopped'; // 'stopped' | 'starting' | 'running' | 'error'
@@ -56,7 +57,7 @@ class TunnelService extends EventEmitter {
 
       try {
         // Run cloudflared tunnel to expose the target URL
-        this.process = spawn('cloudflared', ['tunnel', '--url', this.targetUrl], {
+        this.process = this.spawnFn('cloudflared', ['tunnel', '--url', this.targetUrl], {
           shell: true,
           windowsHide: true
         });

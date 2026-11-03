@@ -6,12 +6,13 @@ const config = require('../config');
 /**
  * Checks if the Docker daemon engine is reachable and responsive.
  * @param {number} timeoutMs
+ * @param {Function} [execFn] Optional execution function for testing boundary isolation
  * @returns {Promise<{ available: boolean, version: string|null, error: string|null }>}
  */
-function checkDockerEngine(timeoutMs = 3000) {
+function checkDockerEngine(timeoutMs = 3000, execFn = exec) {
   return new Promise((resolve) => {
-    exec('docker info --format "{{.ServerVersion}}"', { timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
-      if (err || !stdout.trim()) {
+    execFn('docker info --format "{{.ServerVersion}}"', { timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+      if (err || !stdout || !stdout.trim()) {
         resolve({
           available: false,
           version: null,
@@ -31,11 +32,12 @@ function checkDockerEngine(timeoutMs = 3000) {
 /**
  * Verifies that the designated Jitsi directory exists and contains necessary compose files.
  * @param {string} jitsiDir
+ * @param {object} [fsModule] Optional fs module for testing boundary isolation
  * @returns {{ path: string, exists: boolean, hasCompose: boolean, hasEnv: boolean, configured: boolean, error: string|null }}
  */
-function checkJitsiEnvironment(jitsiDir = config.JITSI_DIR) {
+function checkJitsiEnvironment(jitsiDir = config.JITSI_DIR, fsModule = fs) {
   const targetDir = jitsiDir || config.JITSI_DIR;
-  const exists = fs.existsSync(targetDir);
+  const exists = fsModule.existsSync(targetDir);
 
   if (!exists) {
     return {
@@ -48,10 +50,10 @@ function checkJitsiEnvironment(jitsiDir = config.JITSI_DIR) {
     };
   }
 
-  const hasCompose = fs.existsSync(path.join(targetDir, 'docker-compose.yml')) ||
-                     fs.existsSync(path.join(targetDir, 'compose.yaml')) ||
-                     fs.existsSync(path.join(targetDir, 'compose.yml'));
-  const hasEnv = fs.existsSync(path.join(targetDir, '.env'));
+  const hasCompose = fsModule.existsSync(path.join(targetDir, 'docker-compose.yml')) ||
+                     fsModule.existsSync(path.join(targetDir, 'compose.yaml')) ||
+                     fsModule.existsSync(path.join(targetDir, 'compose.yml'));
+  const hasEnv = fsModule.existsSync(path.join(targetDir, '.env'));
 
   let error = null;
   if (!hasCompose) {
