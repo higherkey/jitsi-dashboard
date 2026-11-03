@@ -5,6 +5,8 @@ const dockerService = require('./services/docker');
 const { probeEndpoint } = require('./services/health');
 const { eventBroker } = require('./services/events');
 const { createStore } = require('./services/store');
+const { tunnelService } = require('./services/tunnel');
+const { getLocalNetworkAddresses, getPrimaryLocalIp } = require('./utils/network');
 const { RateLimiter } = require('./middleware/rate-limiter');
 const { hashPassword, verifyPassword, generateToken } = require('./utils/crypto');
 const { formatProblemDetails } = require('./utils/rfc7807');
@@ -169,6 +171,10 @@ async function handleStatus(req, res) {
       overallState = 'partial';
     }
 
+    const localAddresses = getLocalNetworkAddresses();
+    const primaryLocalIp = getPrimaryLocalIp();
+    const tunnelInfo = tunnelService.getStatus();
+
     const payload = sanitizeSecrets({
       state: overallState,
       isAllRunning,
@@ -178,6 +184,15 @@ async function handleStatus(req, res) {
       latencyMs: health.latencyMs,
       jitsiUrl: config.HTTPS_URL,
       grafanaUrl: config.GRAFANA_URL,
+      defaultRoomName: config.DEFAULT_ROOM_NAME,
+      network: {
+        primaryIp: primaryLocalIp,
+        port: config.PORT,
+        addresses: localAddresses,
+        localDashboardUrl: `http://${primaryLocalIp}:${config.PORT}`,
+        localMeetingUrl: `${config.HTTPS_URL}/${config.DEFAULT_ROOM_NAME}`
+      },
+      tunnel: tunnelInfo,
       containers,
       authenticated: isAuthenticated(req),
       timestamp: new Date().toISOString()
@@ -352,6 +367,58 @@ function createServer() {
       return handleEvents(req, res);
     }
 
+    if (pathname === '/api/v1/tunnel/status' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(JSON.stringify(tunnelService.getStatus()));
+    }
+    if (pathname === '/api/v1/tunnel/start' && req.method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      try {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+          let customTargetUrl = null;
+          if (body) {
+            try {
+              const parsed = JSON.parse(body);
+              if (parsed.targetUrl) customTargetUrl = parsed.targetUrl;
+            } catch {}
+          }
+          try {
+            const status = await tunnelService.start(customTargetUrl);
+            store.logAudit('TUNNEL_START', status.publicUrl || 'pending');
+            res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+            res.end(JSON.stringify(status));
+          } catch (err) {
+            const problem = formatProblemDetails({
+              status: 500,
+              title: 'Tunnel Start Failed',
+              detail: err.message,
+              instance: '/api/v1/tunnel/start'
+            });
+            res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+            res.end(JSON.stringify(problem));
+          }
+        });
+        return;
+      } catch (err) {
+        const problem = formatProblemDetails({
+          status: 500,
+          detail: err.message,
+          instance: '/api/v1/tunnel/start'
+        });
+        res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+        return res.end(JSON.stringify(problem));
+      }
+    }
+    if (pathname === '/api/v1/tunnel/stop' && req.method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      const status = await tunnelService.stop();
+      store.logAudit('TUNNEL_STOP', 'stopped');
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(JSON.stringify(status));
+    }
+
     // Static Assets
     const handled = serveStatic(req, res, pathname);
     if (handled) return;
@@ -371,6 +438,14 @@ if (require.main === module) {
   const server = createServer();
   server.listen(config.PORT, config.HOST, () => {
     console.log(`Jitsi Dashboard running at http://${config.HOST}:${config.PORT}`);
+    if (config.AUTO_START_TUNNEL) {
+      console.log('AUTO_START_TUNNEL is enabled. Starting Cloudflare tunnel...');
+      tunnelService.start().then(status => {
+        console.log(`Cloudflare tunnel active: ${status.publicUrl}`);
+      }).catch(err => {
+        console.warn(`Failed to auto-start tunnel: ${err.message}`);
+      });
+    }
   });
 }
 

@@ -19,7 +19,18 @@
     loginForm: document.getElementById('login-form'),
     adminPasswordInput: document.getElementById('admin-password'),
     authErrorBanner: document.getElementById('auth-error-banner'),
-    openGrafanaLink: document.getElementById('open-grafana-link')
+    openGrafanaLink: document.getElementById('open-grafana-link'),
+    tunnelBadge: document.getElementById('tunnel-badge'),
+    btnToggleTunnel: document.getElementById('btn-toggle-tunnel'),
+    tunnelBtnIcon: document.getElementById('tunnel-btn-icon'),
+    tunnelBtnLabel: document.getElementById('tunnel-btn-label'),
+    inputLocalLink: document.getElementById('input-local-link'),
+    btnCopyLocal: document.getElementById('btn-copy-local'),
+    inputPublicLink: document.getElementById('input-public-link'),
+    btnCopyPublic: document.getElementById('btn-copy-public'),
+    tunnelStatusHint: document.getElementById('tunnel-status-hint'),
+    inputMeetingRoom: document.getElementById('input-meeting-room'),
+    btnUpdateRoom: document.getElementById('btn-update-room')
   };
 
   let eventSource = null;
@@ -113,6 +124,43 @@
     elements.btnStart.disabled = isBusy || s.status === 'online';
     elements.btnStop.disabled = isBusy || s.status === 'offline';
     elements.btnRestart.disabled = isBusy;
+
+    // 6. Invite & Network Links
+    const currentRoom = elements.inputMeetingRoom.value.trim() || s.defaultRoomName || 'jitsi-meeting';
+    if (s.network && s.network.primaryIp) {
+      const localBase = `http://${s.network.primaryIp}:${s.network.port}`;
+      elements.inputLocalLink.value = `${localBase} (Room: ${currentRoom})`;
+    }
+
+    // Tunnel UI state
+    const tunnel = s.tunnel || { status: 'stopped' };
+    elements.tunnelBadge.className = 'status-badge';
+    if (tunnel.status === 'running') {
+      elements.tunnelBadge.classList.add('badge-online');
+      elements.tunnelBadge.textContent = 'TUNNEL: ACTIVE';
+      elements.tunnelBtnLabel.textContent = 'Stop Public Link';
+      elements.tunnelBtnIcon.textContent = '⏹';
+      elements.inputPublicLink.value = `${tunnel.publicUrl} (Room: ${currentRoom})`;
+      elements.btnCopyPublic.disabled = false;
+      elements.tunnelStatusHint.textContent = `Public link online. Share with friends anywhere in the world!`;
+    } else if (tunnel.status === 'starting') {
+      elements.tunnelBadge.classList.add('badge-partial');
+      elements.tunnelBadge.textContent = 'TUNNEL: STARTING...';
+      elements.tunnelBtnLabel.textContent = 'Starting...';
+      elements.tunnelBtnIcon.textContent = '⏳';
+      elements.inputPublicLink.value = 'Starting Cloudflare tunnel...';
+      elements.btnCopyPublic.disabled = true;
+      elements.tunnelStatusHint.textContent = 'Allocating secure Cloudflare edge connection...';
+    } else {
+      elements.tunnelBadge.classList.add('badge-offline');
+      elements.tunnelBadge.textContent = 'TUNNEL: OFF';
+      elements.tunnelBtnLabel.textContent = 'Enable Public Link';
+      elements.tunnelBtnIcon.textContent = '🌐';
+      elements.inputPublicLink.value = '';
+      elements.inputPublicLink.placeholder = "Tunnel disabled (Click 'Enable Public Link')";
+      elements.btnCopyPublic.disabled = true;
+      elements.tunnelStatusHint.textContent = 'Accessible from anywhere on the internet without router port forwarding.';
+    }
   });
 
   // Action Dispatchers
@@ -232,6 +280,47 @@
     });
   }
 
+  // Tunnel Controls
+  async function toggleTunnel() {
+    if (!currentUser) {
+      openAuthModal();
+      return;
+    }
+
+    const currentTunnel = state.tunnel || {};
+    if (currentTunnel.status === 'running' || currentTunnel.status === 'starting') {
+      try {
+        await api.stopTunnel();
+        await refreshTelemetry();
+      } catch (err) {
+        alert(`Failed to stop tunnel: ${err.message}`);
+      }
+    } else {
+      try {
+        state.update({ tunnel: { status: 'starting' } });
+        await api.startTunnel();
+        await refreshTelemetry();
+      } catch (err) {
+        alert(`Failed to start tunnel: ${err.message}`);
+        await refreshTelemetry();
+      }
+    }
+  }
+
+  function copyToClipboard(inputElement, btnElement) {
+    if (!inputElement.value) return;
+    navigator.clipboard.writeText(inputElement.value).then(() => {
+      const originalText = btnElement.textContent;
+      btnElement.textContent = 'Copied!';
+      setTimeout(() => {
+        btnElement.textContent = originalText;
+      }, 2000);
+    }).catch(() => {
+      inputElement.select();
+      document.execCommand('copy');
+    });
+  }
+
   // Bind Buttons
   elements.btnStart.addEventListener('click', () => triggerStackAction('Starting', () => api.startServices()));
   elements.btnStop.addEventListener('click', () => triggerStackAction('Stopping', () => api.stopServices()));
@@ -239,6 +328,12 @@
   elements.btnRefresh.addEventListener('click', refreshTelemetry);
   elements.btnFetchLogs.addEventListener('click', fetchLogs);
   elements.selectService.addEventListener('change', fetchLogs);
+  elements.btnToggleTunnel.addEventListener('click', toggleTunnel);
+  elements.btnCopyLocal.addEventListener('click', () => copyToClipboard(elements.inputLocalLink, elements.btnCopyLocal));
+  elements.btnCopyPublic.addEventListener('click', () => copyToClipboard(elements.inputPublicLink, elements.btnCopyPublic));
+  elements.btnUpdateRoom.addEventListener('click', () => {
+    state.notify();
+  });
 
   // Teardown Hygiene
   window.addEventListener('beforeunload', () => {

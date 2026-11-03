@@ -54,6 +54,11 @@ describe('Jitsi Dashboard API Integration Tests', () => {
     assert.ok('state' in res.json);
     assert.ok('isAllRunning' in res.json);
     assert.ok(Array.isArray(res.json.containers));
+    assert.ok(res.json.network);
+    assert.ok(res.json.network.primaryIp);
+    assert.ok(res.json.network.localDashboardUrl);
+    assert.ok(res.json.tunnel);
+    assert.equal(res.json.tunnel.status, 'stopped');
   });
 
   it('rejects unauthenticated mutating action with RFC 7807 401 Unauthorized', async () => {
@@ -89,5 +94,19 @@ describe('Jitsi Dashboard API Integration Tests', () => {
     const res = await makeRequest('/api/v1/services/web/restart', 'POST', null, authCookie);
     // Should be 200 (if docker runs) or 500 if docker error, but NOT 401!
     assert.notEqual(res.status, 401);
+  });
+
+  it('provides tunnel endpoints with authentication checks', async () => {
+    const unauthRes = await makeRequest('/api/v1/tunnel/start', 'POST', JSON.stringify({}));
+    assert.equal(unauthRes.status, 401);
+
+    const statusRes = await makeRequest('/api/v1/tunnel/status');
+    assert.equal(statusRes.status, 200);
+    assert.ok(statusRes.json);
+    assert.equal(statusRes.json.status, 'stopped');
+
+    const stopRes = await makeRequest('/api/v1/tunnel/stop', 'POST', null, authCookie);
+    assert.equal(stopRes.status, 200);
+    assert.equal(stopRes.json.status, 'stopped');
   });
 });

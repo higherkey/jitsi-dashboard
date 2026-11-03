@@ -38,5 +38,30 @@ const api = {
     const res = await fetch(`/api/v1/logs?${query.toString()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+  },
+
+  async getTunnelStatus() {
+    const res = await fetch('/api/v1/tunnel/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async startTunnel(targetUrl = null) {
+    const res = await fetch('/api/v1/tunnel/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetUrl })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+
+  async stopTunnel() {
+    const res = await fetch('/api/v1/tunnel/stop', { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
   }
 };

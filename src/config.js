@@ -33,6 +33,8 @@ const GRAFANA_URL = process.env.GRAFANA_URL || 'http://localhost:3000';
 const DATABASE_URL = process.env.DATABASE_URL || null;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'jitsi_dashboard_default_secret_key_123';
+const DEFAULT_ROOM_NAME = process.env.DEFAULT_ROOM_NAME || 'jitsi-meeting';
+const AUTO_START_TUNNEL = process.env.AUTO_START_TUNNEL === 'true';
 
 module.exports = {
   JITSI_DIR,
@@ -43,5 +45,7 @@ module.exports = {
   GRAFANA_URL,
   DATABASE_URL,
   ADMIN_PASSWORD,
-  SESSION_SECRET
+  SESSION_SECRET,
+  DEFAULT_ROOM_NAME,
+  AUTO_START_TUNNEL
 };
