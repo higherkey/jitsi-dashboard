@@ -59,6 +59,19 @@ describe('Jitsi Dashboard API Integration Tests', () => {
     assert.ok(res.json.network.localDashboardUrl);
     assert.ok(res.json.tunnel);
     assert.equal(res.json.tunnel.status, 'stopped');
+    assert.ok(res.json.vitals);
+    assert.ok('docker' in res.json.vitals);
+    assert.ok('jitsiEnv' in res.json.vitals);
+    assert.ok('readiness' in res.json.vitals);
+  });
+
+  it('GET /api/v1/vitals returns 200 with system vitals payload', async () => {
+    const res = await makeRequest('/api/v1/vitals');
+    assert.equal(res.status, 200);
+    assert.ok(res.json);
+    assert.ok('docker' in res.json);
+    assert.ok('jitsiEnv' in res.json);
+    assert.ok('readiness' in res.json);
   });
 
   it('rejects unauthenticated mutating action with RFC 7807 401 Unauthorized', async () => {

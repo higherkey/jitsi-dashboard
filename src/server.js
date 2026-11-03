@@ -7,6 +7,7 @@ const { eventBroker } = require('./services/events');
 const { createStore } = require('./services/store');
 const { tunnelService } = require('./services/tunnel');
 const { getLocalNetworkAddresses, getPrimaryLocalIp } = require('./utils/network');
+const { getSystemVitals } = require('./services/vitals');
 const { RateLimiter } = require('./middleware/rate-limiter');
 const { hashPassword, verifyPassword, generateToken } = require('./utils/crypto');
 const { formatProblemDetails } = require('./utils/rfc7807');
@@ -174,6 +175,7 @@ async function handleStatus(req, res) {
     const localAddresses = getLocalNetworkAddresses();
     const primaryLocalIp = getPrimaryLocalIp();
     const tunnelInfo = tunnelService.getStatus();
+    const vitals = await getSystemVitals({ isAllRunning, isAnyRunning });
 
     const payload = sanitizeSecrets({
       state: overallState,
@@ -193,6 +195,7 @@ async function handleStatus(req, res) {
         localMeetingUrl: `${config.HTTPS_URL}/${config.DEFAULT_ROOM_NAME}`
       },
       tunnel: tunnelInfo,
+      vitals,
       containers,
       authenticated: isAuthenticated(req),
       timestamp: new Date().toISOString()
@@ -226,6 +229,31 @@ async function handleAction(req, res, action, serviceName = null) {
     });
     res.writeHead(400, { 'Content-Type': 'application/problem+json' });
     return res.end(JSON.stringify(problem));
+  }
+
+  // Pre-flight check for stack initiation
+  if (action === 'start') {
+    const vitals = await getSystemVitals({ isAllRunning: false, isAnyRunning: false });
+    if (!vitals.docker.available) {
+      const problem = formatProblemDetails({
+        status: 503,
+        title: 'Docker Daemon Offline',
+        detail: 'Cannot start stack: Docker daemon is offline. Please launch Docker Desktop first.',
+        instance: req.url
+      });
+      res.writeHead(503, { 'Content-Type': 'application/problem+json' });
+      return res.end(JSON.stringify(problem));
+    }
+    if (!vitals.jitsiEnv.configured) {
+      const problem = formatProblemDetails({
+        status: 500,
+        title: 'Environment Incomplete',
+        detail: `Cannot start stack: ${vitals.jitsiEnv.error}`,
+        instance: req.url
+      });
+      res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+      return res.end(JSON.stringify(problem));
+    }
   }
 
   try {
@@ -342,6 +370,11 @@ function createServer() {
     // Telemetry & Lifecycle API
     if (pathname === '/api/v1/status' && req.method === 'GET') {
       return handleStatus(req, res);
+    }
+    if (pathname === '/api/v1/vitals' && req.method === 'GET') {
+      const vitals = await getSystemVitals();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(JSON.stringify(vitals));
     }
     if (pathname === '/api/v1/services/start' && req.method === 'POST') {
       return handleAction(req, res, 'start');

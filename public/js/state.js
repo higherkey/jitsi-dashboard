@@ -19,6 +19,11 @@ class DashboardState {
       errorMessage: null,
       targetUrl: 'http://localhost:3001'
     };
+    this.vitals = {
+      docker: { available: false, version: null, error: null },
+      jitsiEnv: { configured: false, error: null },
+      readiness: { readyToStart: false, status: 'blocked', reason: 'Checking vitals...' }
+    };
     this.defaultRoomName = 'jitsi-meeting';
     this.listeners = new Set();
   }
@@ -31,6 +36,7 @@ class DashboardState {
     if (data.jitsiUrl) this.jitsiUrl = data.jitsiUrl;
     if (data.network) this.network = data.network;
     if (data.tunnel) this.tunnel = data.tunnel;
+    if (data.vitals) this.vitals = data.vitals;
     if (data.defaultRoomName) this.defaultRoomName = data.defaultRoomName;
     this.notify();
   }

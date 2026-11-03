@@ -30,7 +30,14 @@
     btnCopyPublic: document.getElementById('btn-copy-public'),
     tunnelStatusHint: document.getElementById('tunnel-status-hint'),
     inputMeetingRoom: document.getElementById('input-meeting-room'),
-    btnUpdateRoom: document.getElementById('btn-update-room')
+    btnUpdateRoom: document.getElementById('btn-update-room'),
+    readinessChip: document.getElementById('readiness-chip'),
+    vitalDockerBadge: document.getElementById('vital-docker-badge'),
+    vitalDockerDetail: document.getElementById('vital-docker-detail'),
+    vitalEnvBadge: document.getElementById('vital-env-badge'),
+    vitalEnvDetail: document.getElementById('vital-env-detail'),
+    vitalReadinessState: document.getElementById('vital-readiness-state'),
+    vitalReadinessAdvice: document.getElementById('vital-readiness-advice')
   };
 
   let eventSource = null;
@@ -119,13 +126,81 @@
       }
     }
 
-    // 5. Button States
+    // 5. Button States & Vitals Readiness
     const isBusy = s.status === 'busy';
-    elements.btnStart.disabled = isBusy || s.status === 'online';
-    elements.btnStop.disabled = isBusy || s.status === 'offline';
-    elements.btnRestart.disabled = isBusy;
+    const vitals = s.vitals || {};
+    const readiness = vitals.readiness || { readyToStart: true, status: 'ready', reason: '' };
 
-    // 6. Invite & Network Links
+    const canStart = !isBusy && s.status !== 'online' && (readiness.readyToStart || s.status === 'partial');
+    elements.btnStart.disabled = !canStart;
+    if (!canStart && !isBusy && s.status !== 'online' && !readiness.readyToStart) {
+      elements.btnStart.title = readiness.reason || 'Stack cannot be started';
+    } else {
+      elements.btnStart.removeAttribute('title');
+    }
+    elements.btnStop.disabled = isBusy || s.status === 'offline';
+    elements.btnRestart.disabled = isBusy || (!readiness.readyToStart && s.status === 'offline');
+
+    // 6. System Vitals & Pre-Flight Checks Render
+    if (elements.readinessChip) {
+      elements.readinessChip.className = 'status-badge';
+      if (readiness.status === 'running') {
+        elements.readinessChip.classList.add('badge-online');
+        elements.readinessChip.textContent = 'STACK ACTIVE';
+      } else if (readiness.status === 'ready') {
+        elements.readinessChip.classList.add('badge-online');
+        elements.readinessChip.textContent = 'READY TO LAUNCH';
+      } else if (readiness.status === 'partial') {
+        elements.readinessChip.classList.add('badge-partial');
+        elements.readinessChip.textContent = 'PARTIAL RUNNING';
+      } else {
+        elements.readinessChip.classList.add('badge-offline');
+        elements.readinessChip.textContent = 'START BLOCKED';
+      }
+    }
+
+    if (elements.vitalDockerBadge && vitals.docker) {
+      elements.vitalDockerBadge.className = 'status-badge';
+      if (vitals.docker.available) {
+        elements.vitalDockerBadge.classList.add('badge-online');
+        elements.vitalDockerBadge.textContent = 'ONLINE';
+        elements.vitalDockerDetail.textContent = `Docker Engine v${vitals.docker.version || 'active'} (Daemon responsive)`;
+      } else {
+        elements.vitalDockerBadge.classList.add('badge-offline');
+        elements.vitalDockerBadge.textContent = 'OFFLINE';
+        elements.vitalDockerDetail.textContent = vitals.docker.error || 'Docker daemon is not running. Launch Docker Desktop.';
+      }
+    }
+
+    if (elements.vitalEnvBadge && vitals.jitsiEnv) {
+      elements.vitalEnvBadge.className = 'status-badge';
+      if (vitals.jitsiEnv.configured) {
+        elements.vitalEnvBadge.classList.add('badge-online');
+        elements.vitalEnvBadge.textContent = 'CONFIGURED';
+        elements.vitalEnvDetail.textContent = `Compose & .env verified in ${vitals.jitsiEnv.path || 'target dir'}`;
+      } else {
+        elements.vitalEnvBadge.classList.add('badge-offline');
+        elements.vitalEnvBadge.textContent = 'INCOMPLETE';
+        elements.vitalEnvDetail.textContent = vitals.jitsiEnv.error || 'Jitsi environment files are incomplete.';
+      }
+    }
+
+    if (elements.vitalReadinessState) {
+      elements.vitalReadinessState.className = 'status-badge';
+      if (readiness.status === 'ready') {
+        elements.vitalReadinessState.classList.add('badge-online');
+        elements.vitalReadinessState.textContent = 'READY';
+      } else if (readiness.status === 'running') {
+        elements.vitalReadinessState.classList.add('badge-online');
+        elements.vitalReadinessState.textContent = 'ACTIVE';
+      } else {
+        elements.vitalReadinessState.classList.add('badge-offline');
+        elements.vitalReadinessState.textContent = 'BLOCKED';
+      }
+      elements.vitalReadinessAdvice.textContent = readiness.reason || 'System is ready.';
+    }
+
+    // 7. Invite & Network Links
     const currentRoom = elements.inputMeetingRoom.value.trim() || s.defaultRoomName || 'jitsi-meeting';
     if (s.network && s.network.primaryIp) {
       const localBase = `http://${s.network.primaryIp}:${s.network.port}`;

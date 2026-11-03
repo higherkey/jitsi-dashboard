@@ -46,6 +46,12 @@ const api = {
     return res.json();
   },
 
+  async getVitals() {
+    const res = await fetch('/api/v1/vitals');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
   async startTunnel(targetUrl = null) {
     const res = await fetch('/api/v1/tunnel/start', {
       method: 'POST',
