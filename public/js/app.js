@@ -202,9 +202,13 @@
 
     // 7. Invite & Network Links
     const currentRoom = elements.inputMeetingRoom.value.trim() || s.defaultRoomName || 'jitsi-meeting';
-    if (s.network && s.network.primaryIp) {
-      const localBase = `http://${s.network.primaryIp}:${s.network.port}`;
-      elements.inputLocalLink.value = `${localBase} (Room: ${currentRoom})`;
+    const encodedRoom = encodeURIComponent(currentRoom);
+
+    if (s.jitsiUrl && s.network && s.network.primaryIp) {
+      const meetingBase = s.jitsiUrl.replace(/localhost|127\.0\.0\.1/, s.network.primaryIp);
+      elements.inputLocalLink.value = `${meetingBase}/${encodedRoom}`;
+    } else if (s.network && s.network.localMeetingUrl) {
+      elements.inputLocalLink.value = `${s.network.localMeetingUrl.replace(/jitsi-meeting$/, encodedRoom)}`;
     }
 
     // Tunnel UI state
@@ -215,8 +219,8 @@
       elements.tunnelBadge.textContent = 'TUNNEL: ACTIVE';
       elements.tunnelBtnLabel.textContent = 'Stop Public Link';
       elements.tunnelBtnIcon.textContent = '⏹';
-      elements.inputPublicLink.value = `${tunnel.publicUrl} (Room: ${currentRoom})`;
-      elements.btnCopyPublic.disabled = false;
+      elements.inputPublicLink.value = tunnel.publicUrl ? `${tunnel.publicUrl}/${encodedRoom}` : 'Tunnel active (fetching URL...)';
+      elements.btnCopyPublic.disabled = !tunnel.publicUrl;
       elements.tunnelStatusHint.textContent = `Public link online. Share with friends anywhere in the world!`;
     } else if (tunnel.status === 'starting') {
       elements.tunnelBadge.classList.add('badge-partial');
@@ -386,9 +390,16 @@
     if (!inputElement.value) return;
     navigator.clipboard.writeText(inputElement.value).then(() => {
       const originalText = btnElement.textContent;
+      const originalAriaLabel = btnElement.getAttribute('aria-label');
       btnElement.textContent = 'Copied!';
+      btnElement.setAttribute('aria-label', 'Copied to clipboard');
       setTimeout(() => {
         btnElement.textContent = originalText;
+        if (originalAriaLabel) {
+          btnElement.setAttribute('aria-label', originalAriaLabel);
+        } else {
+          btnElement.removeAttribute('aria-label');
+        }
       }, 2000);
     }).catch(() => {
       inputElement.select();

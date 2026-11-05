@@ -109,6 +109,35 @@ test('Tunnel Service Unit Tests', async (t) => {
     assert.equal(result.publicUrl, 'https://existing-tunnel.trycloudflare.com');
   });
 
+  await t.test('start() when starting returns active pending promise for concurrent calls', async () => {
+    // Arrange
+    class MockProcess extends EventEmitter {
+      constructor() {
+        super();
+        this.stdout = new EventEmitter();
+        this.stderr = new EventEmitter();
+      }
+      kill() {}
+    }
+
+    const mockProc = new MockProcess();
+    const svc = new TunnelService({ spawnFn: () => mockProc });
+
+    // Act
+    const call1 = svc.start();
+    const call2 = svc.start();
+
+    // Verify both are awaiting the same operation
+    assert.equal(call1, call2);
+
+    mockProc.stdout.emit('data', Buffer.from('https://concurrent.trycloudflare.com'));
+    const [res1, res2] = await Promise.all([call1, call2]);
+
+    // Assert
+    assert.equal(res1.publicUrl, 'https://concurrent.trycloudflare.com');
+    assert.equal(res2.publicUrl, 'https://concurrent.trycloudflare.com');
+  });
+
   await t.test('stop() kills running process and transitions to stopped', async () => {
     // Arrange
     let killed = false;
@@ -135,5 +164,99 @@ test('Tunnel Service Unit Tests', async (t) => {
     assert.equal(killed, true);
     assert.equal(result.status, 'stopped');
     assert.equal(result.publicUrl, null);
+  });
+
+  await t.test('stop() cancels active initialization timer', async () => {
+    // Arrange
+    class MockProcess extends EventEmitter {
+      constructor() {
+        super();
+        this.stdout = new EventEmitter();
+        this.stderr = new EventEmitter();
+      }
+      kill() {}
+    }
+
+    const svc = new TunnelService({ spawnFn: () => new MockProcess() });
+    const startPromise = svc.start();
+    assert.ok(svc.startTimeout);
+
+    // Act
+    await svc.stop();
+
+    // Assert
+    assert.equal(svc.startTimeout, null);
+    assert.equal(svc.status, 'stopped');
+  });
+
+  await t.test('spawns cloudflared with --no-tls-verify for https target without shell', async () => {
+    // Arrange
+    let capturedCmd = null;
+    let capturedArgs = null;
+    let capturedOpts = null;
+
+    class MockProcess extends EventEmitter {
+      constructor() {
+        super();
+        this.stdout = new EventEmitter();
+        this.stderr = new EventEmitter();
+      }
+      kill() {}
+    }
+
+    const mockSpawn = (cmd, args, opts) => {
+      capturedCmd = cmd;
+      capturedArgs = args;
+      capturedOpts = opts;
+      return new MockProcess();
+    };
+
+    const svc = new TunnelService({
+      spawnFn: mockSpawn,
+      targetUrl: 'https://localhost:8443'
+    });
+
+    // Act
+    const startPromise = svc.start();
+    await svc.stop();
+
+    // Assert
+    assert.equal(capturedCmd, 'cloudflared');
+    assert.deepEqual(capturedArgs, ['tunnel', '--url', 'https://localhost:8443', '--no-tls-verify']);
+    assert.equal(capturedOpts.shell, undefined);
+  });
+
+  await t.test('rejects customTargetUrl with invalid protocol', async () => {
+    // Arrange
+    const svc = new TunnelService();
+
+    // Act & Assert
+    await assert.rejects(
+      svc.start('ftp://evil.com'),
+      /Invalid URL protocol/
+    );
+  });
+
+  await t.test('rejects immediately when process closes before establishing URL', async () => {
+    // Arrange
+    class MockProcess extends EventEmitter {
+      constructor() {
+        super();
+        this.stdout = new EventEmitter();
+        this.stderr = new EventEmitter();
+      }
+      kill() {}
+    }
+
+    const mockProc = new MockProcess();
+    const svc = new TunnelService({ spawnFn: () => mockProc });
+
+    // Act
+    const startPromise = svc.start();
+    mockProc.emit('close', 1);
+
+    // Assert
+    await assert.rejects(startPromise, /cloudflared exited before establishing tunnel/);
+    assert.equal(svc.status, 'error');
   });
 });

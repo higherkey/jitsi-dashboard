@@ -114,13 +114,14 @@ function calculateReadiness({ docker, jitsiEnv, isAllRunning = false, isAnyRunni
 /**
  * Aggregates all system vitals into a structured payload.
  * @param {{ isAllRunning?: boolean, isAnyRunning?: boolean }} context
+ * @param {{ execFn?: Function, fsModule?: object }} [deps]
  * @returns {Promise<{ docker: object, jitsiEnv: object, readiness: object }>}
  */
-async function getSystemVitals(context = {}) {
+async function getSystemVitals(context = {}, deps = {}) {
   const [docker] = await Promise.all([
-    checkDockerEngine()
+    checkDockerEngine(deps.timeoutMs || 3000, deps.execFn)
   ]);
-  const jitsiEnv = checkJitsiEnvironment();
+  const jitsiEnv = checkJitsiEnvironment(undefined, deps.fsModule);
   const readiness = calculateReadiness({
     docker,
     jitsiEnv,

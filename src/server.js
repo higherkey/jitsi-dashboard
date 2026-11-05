@@ -192,7 +192,7 @@ async function handleStatus(req, res) {
         port: config.PORT,
         addresses: localAddresses,
         localDashboardUrl: `http://${primaryLocalIp}:${config.PORT}`,
-        localMeetingUrl: `${config.HTTPS_URL}/${config.DEFAULT_ROOM_NAME}`
+        localMeetingUrl: `${config.HTTPS_URL.replace(/localhost|127\.0\.0\.1/, primaryLocalIp)}/${encodeURIComponent(config.DEFAULT_ROOM_NAME)}`
       },
       tunnel: tunnelInfo,
       vitals,
@@ -372,9 +372,20 @@ function createServer() {
       return handleStatus(req, res);
     }
     if (pathname === '/api/v1/vitals' && req.method === 'GET') {
-      const vitals = await getSystemVitals();
-      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
-      return res.end(JSON.stringify(vitals));
+      try {
+        const vitals = await getSystemVitals();
+        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(JSON.stringify(vitals));
+      } catch (err) {
+        const problem = formatProblemDetails({
+          status: 500,
+          title: 'System Vitals Unavailable',
+          detail: err.message,
+          instance: req.url
+        });
+        res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+        return res.end(JSON.stringify(problem));
+      }
     }
     if (pathname === '/api/v1/services/start' && req.method === 'POST') {
       return handleAction(req, res, 'start');
@@ -406,50 +417,92 @@ function createServer() {
     }
     if (pathname === '/api/v1/tunnel/start' && req.method === 'POST') {
       if (!requireAuth(req, res)) return;
-      try {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', async () => {
-          let customTargetUrl = null;
-          if (body) {
-            try {
-              const parsed = JSON.parse(body);
-              if (parsed.targetUrl) customTargetUrl = parsed.targetUrl;
-            } catch {}
-          }
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', async () => {
+        let customTargetUrl = null;
+        if (body.trim()) {
+          let parsed;
           try {
-            const status = await tunnelService.start(customTargetUrl);
-            store.logAudit('TUNNEL_START', status.publicUrl || 'pending');
-            res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
-            res.end(JSON.stringify(status));
-          } catch (err) {
+            parsed = JSON.parse(body);
+          } catch {
             const problem = formatProblemDetails({
-              status: 500,
-              title: 'Tunnel Start Failed',
-              detail: err.message,
-              instance: '/api/v1/tunnel/start'
+              status: 400,
+              title: 'Bad Request',
+              detail: 'Malformed JSON payload in request body.',
+              instance: req.url
             });
-            res.writeHead(500, { 'Content-Type': 'application/problem+json' });
-            res.end(JSON.stringify(problem));
+            res.writeHead(400, { 'Content-Type': 'application/problem+json' });
+            return res.end(JSON.stringify(problem));
           }
-        });
-        return;
+
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.targetUrl !== undefined && parsed.targetUrl !== null) {
+              if (typeof parsed.targetUrl !== 'string') {
+                const problem = formatProblemDetails({
+                  status: 400,
+                  title: 'Bad Request',
+                  detail: 'targetUrl must be a valid URL string.',
+                  instance: req.url
+                });
+                res.writeHead(400, { 'Content-Type': 'application/problem+json' });
+                return res.end(JSON.stringify(problem));
+              }
+              try {
+                const url = new URL(parsed.targetUrl);
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                  throw new Error();
+                }
+                customTargetUrl = parsed.targetUrl;
+              } catch {
+                const problem = formatProblemDetails({
+                  status: 400,
+                  title: 'Bad Request',
+                  detail: 'targetUrl must be an absolute http: or https: URL.',
+                  instance: req.url
+                });
+                res.writeHead(400, { 'Content-Type': 'application/problem+json' });
+                return res.end(JSON.stringify(problem));
+              }
+            }
+          }
+        }
+
+        try {
+          const status = await tunnelService.start(customTargetUrl);
+          store.logAudit('TUNNEL_START', status.publicUrl || 'pending');
+          res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+          res.end(JSON.stringify(status));
+        } catch (err) {
+          const problem = formatProblemDetails({
+            status: 500,
+            title: 'Tunnel Start Failed',
+            detail: err.message,
+            instance: req.url
+          });
+          res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+          res.end(JSON.stringify(problem));
+        }
+      });
+      return;
+    }
+    if (pathname === '/api/v1/tunnel/stop' && req.method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      try {
+        const status = await tunnelService.stop();
+        store.logAudit('TUNNEL_STOP', 'stopped');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(JSON.stringify(status));
       } catch (err) {
         const problem = formatProblemDetails({
           status: 500,
+          title: 'Tunnel Stop Failed',
           detail: err.message,
-          instance: '/api/v1/tunnel/start'
+          instance: req.url
         });
         res.writeHead(500, { 'Content-Type': 'application/problem+json' });
         return res.end(JSON.stringify(problem));
       }
-    }
-    if (pathname === '/api/v1/tunnel/stop' && req.method === 'POST') {
-      if (!requireAuth(req, res)) return;
-      const status = await tunnelService.stop();
-      store.logAudit('TUNNEL_STOP', 'stopped');
-      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
-      return res.end(JSON.stringify(status));
     }
 
     // Static Assets

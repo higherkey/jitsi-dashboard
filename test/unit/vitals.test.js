@@ -165,16 +165,30 @@ describe('System Vitals & Pre-Flight Checks Service', () => {
     assert.ok(readiness.reason.includes('Stack is already active'));
   });
 
-  it('getSystemVitals aggregates docker, jitsiEnv, and readiness', async () => {
+  it('getSystemVitals aggregates docker, jitsiEnv, and readiness with injected boundaries', async () => {
+    // Arrange
+    const mockExec = (cmd, opts, cb) => {
+      const callback = typeof opts === 'function' ? opts : cb;
+      callback(null, '29.9.2', '');
+    };
+    const mockFs = {
+      existsSync: () => true
+    };
+
     // Act
-    const vitals = await getSystemVitals({ isAllRunning: false, isAnyRunning: false });
+    const vitals = await getSystemVitals(
+      { isAllRunning: false, isAnyRunning: false },
+      { execFn: mockExec, fsModule: mockFs }
+    );
 
     // Assert
     assert.ok('docker' in vitals);
     assert.ok('jitsiEnv' in vitals);
     assert.ok('readiness' in vitals);
-    assert.equal(typeof vitals.docker.available, 'boolean');
-    assert.equal(typeof vitals.jitsiEnv.configured, 'boolean');
-    assert.equal(typeof vitals.readiness.readyToStart, 'boolean');
+    assert.equal(vitals.docker.available, true);
+    assert.equal(vitals.docker.version, '29.9.2');
+    assert.equal(vitals.jitsiEnv.configured, true);
+    assert.equal(vitals.readiness.readyToStart, true);
+    assert.equal(vitals.readiness.status, 'ready');
   });
 });

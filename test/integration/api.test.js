@@ -121,6 +121,16 @@ describe('Jitsi Dashboard API Integration Tests', () => {
     const stopRes = await makeRequest('/api/v1/tunnel/stop', 'POST', null, authCookie);
     assert.equal(stopRes.status, 200);
     assert.equal(stopRes.json.status, 'stopped');
+
+    // Reject malformed JSON body
+    const badJsonRes = await makeRequest('/api/v1/tunnel/start', 'POST', 'not-valid-json{', authCookie);
+    assert.equal(badJsonRes.status, 400);
+    assert.equal(badJsonRes.json.title, 'Bad Request');
+
+    // Reject invalid targetUrl
+    const badUrlRes = await makeRequest('/api/v1/tunnel/start', 'POST', JSON.stringify({ targetUrl: 'not_a_valid_url' }), authCookie);
+    assert.equal(badUrlRes.status, 400);
+    assert.equal(badUrlRes.json.title, 'Bad Request');
   });
 
   it('provides static assets with proper headers', async () => {

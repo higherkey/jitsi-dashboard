@@ -53,10 +53,11 @@ const api = {
   },
 
   async startTunnel(targetUrl = null) {
+    const payload = targetUrl ? { targetUrl } : {};
     const res = await fetch('/api/v1/tunnel/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetUrl })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
