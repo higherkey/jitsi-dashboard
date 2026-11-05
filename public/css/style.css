@@ -256,9 +256,10 @@ body {
 }
 
 .table-action-btn {
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8rem;
-  min-height: 36px;
+  min-height: 44px;
+  min-width: 44px;
 }
 
 /* Logs Box */
@@ -365,8 +366,11 @@ body {
   color: var(--color-text-muted);
   font-size: 1.5rem;
   cursor: pointer;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 
@@ -436,4 +440,173 @@ body {
   .btn {
     width: 100%;
   }
+}
+
+/* Invite Friends & Tunnel Section */
+.invite-section {
+  margin-bottom: var(--space-6);
+}
+
+.invite-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.invite-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.invite-subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.tunnel-control-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.invite-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.invite-card {
+  background-color: var(--color-bg-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.invite-card-type {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-brand);
+  letter-spacing: 0.05em;
+}
+
+.invite-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.input-with-button {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.readonly-input {
+  background-color: rgba(255, 255, 255, 0.03);
+  cursor: text;
+}
+
+.btn-copy {
+  min-width: 80px;
+  flex-shrink: 0;
+  height: 44px;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+}
+
+.btn-copy:hover {
+  background-color: var(--color-bg-canvas);
+  border-color: var(--color-brand);
+}
+
+.invite-hint {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-top: var(--space-2);
+}
+
+.room-selector-group {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  max-width: 480px;
+}
+
+/* System Vitals & Pre-Flight Checks */
+.vitals-section {
+  margin-bottom: var(--space-6);
+}
+
+.vitals-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.vitals-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.vitals-subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.vital-card {
+  background-color: var(--color-bg-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.vital-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vital-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vital-details {
+  font-size: 0.85rem;
+  color: var(--color-text-main);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.vital-advice-card {
+  border-color: rgba(59, 130, 246, 0.3);
 }

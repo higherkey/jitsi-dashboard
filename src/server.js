@@ -5,6 +5,9 @@ const dockerService = require('./services/docker');
 const { probeEndpoint } = require('./services/health');
 const { eventBroker } = require('./services/events');
 const { createStore } = require('./services/store');
+const { tunnelService } = require('./services/tunnel');
+const { getLocalNetworkAddresses, getPrimaryLocalIp } = require('./utils/network');
+const { getSystemVitals } = require('./services/vitals');
 const { RateLimiter } = require('./middleware/rate-limiter');
 const { hashPassword, verifyPassword, generateToken } = require('./utils/crypto');
 const { formatProblemDetails } = require('./utils/rfc7807');
@@ -169,6 +172,11 @@ async function handleStatus(req, res) {
       overallState = 'partial';
     }
 
+    const localAddresses = getLocalNetworkAddresses();
+    const primaryLocalIp = getPrimaryLocalIp();
+    const tunnelInfo = tunnelService.getStatus();
+    const vitals = await getSystemVitals({ isAllRunning, isAnyRunning });
+
     const payload = sanitizeSecrets({
       state: overallState,
       isAllRunning,
@@ -178,6 +186,16 @@ async function handleStatus(req, res) {
       latencyMs: health.latencyMs,
       jitsiUrl: config.HTTPS_URL,
       grafanaUrl: config.GRAFANA_URL,
+      defaultRoomName: config.DEFAULT_ROOM_NAME,
+      network: {
+        primaryIp: primaryLocalIp,
+        port: config.PORT,
+        addresses: localAddresses,
+        localDashboardUrl: `http://${primaryLocalIp}:${config.PORT}`,
+        localMeetingUrl: `${config.HTTPS_URL.replace(/localhost|127\.0\.0\.1/, primaryLocalIp)}/${encodeURIComponent(config.DEFAULT_ROOM_NAME)}`
+      },
+      tunnel: tunnelInfo,
+      vitals,
       containers,
       authenticated: isAuthenticated(req),
       timestamp: new Date().toISOString()
@@ -211,6 +229,31 @@ async function handleAction(req, res, action, serviceName = null) {
     });
     res.writeHead(400, { 'Content-Type': 'application/problem+json' });
     return res.end(JSON.stringify(problem));
+  }
+
+  // Pre-flight check for stack initiation
+  if (action === 'start') {
+    const vitals = await getSystemVitals({ isAllRunning: false, isAnyRunning: false });
+    if (!vitals.docker.available) {
+      const problem = formatProblemDetails({
+        status: 503,
+        title: 'Docker Daemon Offline',
+        detail: 'Cannot start stack: Docker daemon is offline. Please launch Docker Desktop first.',
+        instance: req.url
+      });
+      res.writeHead(503, { 'Content-Type': 'application/problem+json' });
+      return res.end(JSON.stringify(problem));
+    }
+    if (!vitals.jitsiEnv.configured) {
+      const problem = formatProblemDetails({
+        status: 500,
+        title: 'Environment Incomplete',
+        detail: `Cannot start stack: ${vitals.jitsiEnv.error}`,
+        instance: req.url
+      });
+      res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+      return res.end(JSON.stringify(problem));
+    }
   }
 
   try {
@@ -328,6 +371,22 @@ function createServer() {
     if (pathname === '/api/v1/status' && req.method === 'GET') {
       return handleStatus(req, res);
     }
+    if (pathname === '/api/v1/vitals' && req.method === 'GET') {
+      try {
+        const vitals = await getSystemVitals();
+        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(JSON.stringify(vitals));
+      } catch (err) {
+        const problem = formatProblemDetails({
+          status: 500,
+          title: 'System Vitals Unavailable',
+          detail: err.message,
+          instance: req.url
+        });
+        res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+        return res.end(JSON.stringify(problem));
+      }
+    }
     if (pathname === '/api/v1/services/start' && req.method === 'POST') {
       return handleAction(req, res, 'start');
     }
@@ -352,6 +411,100 @@ function createServer() {
       return handleEvents(req, res);
     }
 
+    if (pathname === '/api/v1/tunnel/status' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(JSON.stringify(tunnelService.getStatus()));
+    }
+    if (pathname === '/api/v1/tunnel/start' && req.method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', async () => {
+        let customTargetUrl = null;
+        if (body.trim()) {
+          let parsed;
+          try {
+            parsed = JSON.parse(body);
+          } catch {
+            const problem = formatProblemDetails({
+              status: 400,
+              title: 'Bad Request',
+              detail: 'Malformed JSON payload in request body.',
+              instance: req.url
+            });
+            res.writeHead(400, { 'Content-Type': 'application/problem+json' });
+            return res.end(JSON.stringify(problem));
+          }
+
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.targetUrl !== undefined && parsed.targetUrl !== null) {
+              if (typeof parsed.targetUrl !== 'string') {
+                const problem = formatProblemDetails({
+                  status: 400,
+                  title: 'Bad Request',
+                  detail: 'targetUrl must be a valid URL string.',
+                  instance: req.url
+                });
+                res.writeHead(400, { 'Content-Type': 'application/problem+json' });
+                return res.end(JSON.stringify(problem));
+              }
+              try {
+                const url = new URL(parsed.targetUrl);
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                  throw new Error();
+                }
+                customTargetUrl = parsed.targetUrl;
+              } catch {
+                const problem = formatProblemDetails({
+                  status: 400,
+                  title: 'Bad Request',
+                  detail: 'targetUrl must be an absolute http: or https: URL.',
+                  instance: req.url
+                });
+                res.writeHead(400, { 'Content-Type': 'application/problem+json' });
+                return res.end(JSON.stringify(problem));
+              }
+            }
+          }
+        }
+
+        try {
+          const status = await tunnelService.start(customTargetUrl);
+          store.logAudit('TUNNEL_START', status.publicUrl || 'pending');
+          res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+          res.end(JSON.stringify(status));
+        } catch (err) {
+          const problem = formatProblemDetails({
+            status: 500,
+            title: 'Tunnel Start Failed',
+            detail: err.message,
+            instance: req.url
+          });
+          res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+          res.end(JSON.stringify(problem));
+        }
+      });
+      return;
+    }
+    if (pathname === '/api/v1/tunnel/stop' && req.method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      try {
+        const status = await tunnelService.stop();
+        store.logAudit('TUNNEL_STOP', 'stopped');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(JSON.stringify(status));
+      } catch (err) {
+        const problem = formatProblemDetails({
+          status: 500,
+          title: 'Tunnel Stop Failed',
+          detail: err.message,
+          instance: req.url
+        });
+        res.writeHead(500, { 'Content-Type': 'application/problem+json' });
+        return res.end(JSON.stringify(problem));
+      }
+    }
+
     // Static Assets
     const handled = serveStatic(req, res, pathname);
     if (handled) return;
@@ -371,6 +524,14 @@ if (require.main === module) {
   const server = createServer();
   server.listen(config.PORT, config.HOST, () => {
     console.log(`Jitsi Dashboard running at http://${config.HOST}:${config.PORT}`);
+    if (config.AUTO_START_TUNNEL) {
+      console.log('AUTO_START_TUNNEL is enabled. Starting Cloudflare tunnel...');
+      tunnelService.start().then(status => {
+        console.log(`Cloudflare tunnel active: ${status.publicUrl}`);
+      }).catch(err => {
+        console.warn(`Failed to auto-start tunnel: ${err.message}`);
+      });
+    }
   });
 }
 

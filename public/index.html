@@ -63,6 +63,93 @@
         </button>
       </section>
 
+      <!-- System Vitals & Pre-Flight Checks -->
+      <section class="card vitals-section" aria-label="System Vitals & Pre-Flight Readiness">
+        <div class="vitals-header">
+          <div class="vitals-title-group">
+            <h2 class="card-title"><span>🩺</span> System Vitals & Launch Readiness</h2>
+            <p class="vitals-subtitle">Monitors host prerequisites so you know when the stack is ready to launch.</p>
+          </div>
+          <div id="readiness-chip" class="status-badge badge-offline">CHECKING VITALS...</div>
+        </div>
+
+        <div class="vitals-grid">
+          <article class="vital-card">
+            <div class="vital-top">
+              <span class="vital-name">Docker Daemon</span>
+              <span id="vital-docker-badge" class="status-badge badge-offline">OFFLINE</span>
+            </div>
+            <div class="vital-details" id="vital-docker-detail">Checking Docker daemon...</div>
+          </article>
+
+          <article class="vital-card">
+            <div class="vital-top">
+              <span class="vital-name">Jitsi Compose Env</span>
+              <span id="vital-env-badge" class="status-badge badge-offline">OFFLINE</span>
+            </div>
+            <div class="vital-details" id="vital-env-detail">Verifying configuration...</div>
+          </article>
+
+          <article class="vital-card vital-advice-card">
+            <div class="vital-top">
+              <span class="vital-name">Readiness Status</span>
+              <span id="vital-readiness-state" class="status-badge badge-offline">BLOCKED</span>
+            </div>
+            <div class="vital-details" id="vital-readiness-advice">Evaluating preconditions...</div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Invite & Share Links Section -->
+      <section class="card invite-section" aria-label="Invite Friends & Devices">
+        <div class="invite-header">
+          <div class="invite-title-group">
+            <h2 class="card-title"><span>🔗</span> Invite Friends & Connect Devices</h2>
+            <p class="invite-subtitle">Share links with friends on the same Wi-Fi or turn on the public Internet tunnel.</p>
+          </div>
+          <div class="tunnel-control-group">
+            <span id="tunnel-badge" class="status-badge badge-offline">TUNNEL: OFF</span>
+            <button id="btn-toggle-tunnel" class="btn btn-secondary" type="button">
+              <span id="tunnel-btn-icon">🌐</span> <span id="tunnel-btn-label">Enable Public Link</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="invite-cards-grid">
+          <article class="invite-card">
+            <div class="invite-card-type">Local Wi-Fi Network</div>
+            <div class="invite-card-content">
+              <label for="input-local-link" class="invite-label">Direct Link (Phone / Local Friends):</label>
+              <div class="input-with-button">
+                <input id="input-local-link" class="form-input readonly-input" type="text" readonly value="Detecting...">
+                <button id="btn-copy-local" class="btn btn-copy" type="button" aria-label="Copy local link">Copy</button>
+              </div>
+              <p class="invite-hint">For friends, phones, and tablets connected to your Wi-Fi.</p>
+            </div>
+          </article>
+
+          <article class="invite-card">
+            <div class="invite-card-type">Internet & Remote Friends</div>
+            <div class="invite-card-content">
+              <label for="input-public-link" class="invite-label">Public Internet Link (Cloudflare Tunnel):</label>
+              <div class="input-with-button">
+                <input id="input-public-link" class="form-input readonly-input" type="text" readonly placeholder="Tunnel disabled (Click 'Enable Public Link')">
+                <button id="btn-copy-public" class="btn btn-copy" type="button" aria-label="Copy public link" disabled>Copy</button>
+              </div>
+              <p class="invite-hint" id="tunnel-status-hint">Accessible from anywhere on the internet without router port forwarding.</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="room-selector-group">
+          <label for="input-meeting-room" class="form-label">Meeting Room Name:</label>
+          <div class="input-with-button">
+            <input id="input-meeting-room" class="form-input" type="text" value="jitsi-meeting" placeholder="e.g. game-night, team-sync">
+            <button id="btn-update-room" class="btn btn-secondary" type="button">Update Links</button>
+          </div>
+        </div>
+      </section>
+
       <section class="metrics-grid" aria-label="System Metrics">
         <article class="card">
           <div class="card-title">Meeting Endpoint</div>

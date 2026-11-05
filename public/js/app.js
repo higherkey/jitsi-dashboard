@@ -19,7 +19,25 @@
     loginForm: document.getElementById('login-form'),
     adminPasswordInput: document.getElementById('admin-password'),
     authErrorBanner: document.getElementById('auth-error-banner'),
-    openGrafanaLink: document.getElementById('open-grafana-link')
+    openGrafanaLink: document.getElementById('open-grafana-link'),
+    tunnelBadge: document.getElementById('tunnel-badge'),
+    btnToggleTunnel: document.getElementById('btn-toggle-tunnel'),
+    tunnelBtnIcon: document.getElementById('tunnel-btn-icon'),
+    tunnelBtnLabel: document.getElementById('tunnel-btn-label'),
+    inputLocalLink: document.getElementById('input-local-link'),
+    btnCopyLocal: document.getElementById('btn-copy-local'),
+    inputPublicLink: document.getElementById('input-public-link'),
+    btnCopyPublic: document.getElementById('btn-copy-public'),
+    tunnelStatusHint: document.getElementById('tunnel-status-hint'),
+    inputMeetingRoom: document.getElementById('input-meeting-room'),
+    btnUpdateRoom: document.getElementById('btn-update-room'),
+    readinessChip: document.getElementById('readiness-chip'),
+    vitalDockerBadge: document.getElementById('vital-docker-badge'),
+    vitalDockerDetail: document.getElementById('vital-docker-detail'),
+    vitalEnvBadge: document.getElementById('vital-env-badge'),
+    vitalEnvDetail: document.getElementById('vital-env-detail'),
+    vitalReadinessState: document.getElementById('vital-readiness-state'),
+    vitalReadinessAdvice: document.getElementById('vital-readiness-advice')
   };
 
   let eventSource = null;
@@ -108,11 +126,120 @@
       }
     }
 
-    // 5. Button States
+    // 5. Button States & Vitals Readiness
     const isBusy = s.status === 'busy';
-    elements.btnStart.disabled = isBusy || s.status === 'online';
+    const vitals = s.vitals || {};
+    const readiness = vitals.readiness || { readyToStart: true, status: 'ready', reason: '' };
+
+    const canStart = !isBusy && s.status !== 'online' && (readiness.readyToStart || s.status === 'partial');
+    elements.btnStart.disabled = !canStart;
+    if (!canStart && !isBusy && s.status !== 'online' && !readiness.readyToStart) {
+      elements.btnStart.title = readiness.reason || 'Stack cannot be started';
+    } else {
+      elements.btnStart.removeAttribute('title');
+    }
     elements.btnStop.disabled = isBusy || s.status === 'offline';
-    elements.btnRestart.disabled = isBusy;
+    elements.btnRestart.disabled = isBusy || (!readiness.readyToStart && s.status === 'offline');
+
+    // 6. System Vitals & Pre-Flight Checks Render
+    if (elements.readinessChip) {
+      elements.readinessChip.className = 'status-badge';
+      if (readiness.status === 'running') {
+        elements.readinessChip.classList.add('badge-online');
+        elements.readinessChip.textContent = 'STACK ACTIVE';
+      } else if (readiness.status === 'ready') {
+        elements.readinessChip.classList.add('badge-online');
+        elements.readinessChip.textContent = 'READY TO LAUNCH';
+      } else if (readiness.status === 'partial') {
+        elements.readinessChip.classList.add('badge-partial');
+        elements.readinessChip.textContent = 'PARTIAL RUNNING';
+      } else {
+        elements.readinessChip.classList.add('badge-offline');
+        elements.readinessChip.textContent = 'START BLOCKED';
+      }
+    }
+
+    if (elements.vitalDockerBadge && vitals.docker) {
+      elements.vitalDockerBadge.className = 'status-badge';
+      if (vitals.docker.available) {
+        elements.vitalDockerBadge.classList.add('badge-online');
+        elements.vitalDockerBadge.textContent = 'ONLINE';
+        elements.vitalDockerDetail.textContent = `Docker Engine v${vitals.docker.version || 'active'} (Daemon responsive)`;
+      } else {
+        elements.vitalDockerBadge.classList.add('badge-offline');
+        elements.vitalDockerBadge.textContent = 'OFFLINE';
+        elements.vitalDockerDetail.textContent = vitals.docker.error || 'Docker daemon is not running. Launch Docker Desktop.';
+      }
+    }
+
+    if (elements.vitalEnvBadge && vitals.jitsiEnv) {
+      elements.vitalEnvBadge.className = 'status-badge';
+      if (vitals.jitsiEnv.configured) {
+        elements.vitalEnvBadge.classList.add('badge-online');
+        elements.vitalEnvBadge.textContent = 'CONFIGURED';
+        elements.vitalEnvDetail.textContent = `Compose & .env verified in ${vitals.jitsiEnv.path || 'target dir'}`;
+      } else {
+        elements.vitalEnvBadge.classList.add('badge-offline');
+        elements.vitalEnvBadge.textContent = 'INCOMPLETE';
+        elements.vitalEnvDetail.textContent = vitals.jitsiEnv.error || 'Jitsi environment files are incomplete.';
+      }
+    }
+
+    if (elements.vitalReadinessState) {
+      elements.vitalReadinessState.className = 'status-badge';
+      if (readiness.status === 'ready') {
+        elements.vitalReadinessState.classList.add('badge-online');
+        elements.vitalReadinessState.textContent = 'READY';
+      } else if (readiness.status === 'running') {
+        elements.vitalReadinessState.classList.add('badge-online');
+        elements.vitalReadinessState.textContent = 'ACTIVE';
+      } else {
+        elements.vitalReadinessState.classList.add('badge-offline');
+        elements.vitalReadinessState.textContent = 'BLOCKED';
+      }
+      elements.vitalReadinessAdvice.textContent = readiness.reason || 'System is ready.';
+    }
+
+    // 7. Invite & Network Links
+    const currentRoom = elements.inputMeetingRoom.value.trim() || s.defaultRoomName || 'jitsi-meeting';
+    const encodedRoom = encodeURIComponent(currentRoom);
+
+    if (s.jitsiUrl && s.network && s.network.primaryIp) {
+      const meetingBase = s.jitsiUrl.replace(/localhost|127\.0\.0\.1/, s.network.primaryIp);
+      elements.inputLocalLink.value = `${meetingBase}/${encodedRoom}`;
+    } else if (s.network && s.network.localMeetingUrl) {
+      elements.inputLocalLink.value = `${s.network.localMeetingUrl.replace(/jitsi-meeting$/, encodedRoom)}`;
+    }
+
+    // Tunnel UI state
+    const tunnel = s.tunnel || { status: 'stopped' };
+    elements.tunnelBadge.className = 'status-badge';
+    if (tunnel.status === 'running') {
+      elements.tunnelBadge.classList.add('badge-online');
+      elements.tunnelBadge.textContent = 'TUNNEL: ACTIVE';
+      elements.tunnelBtnLabel.textContent = 'Stop Public Link';
+      elements.tunnelBtnIcon.textContent = '⏹';
+      elements.inputPublicLink.value = tunnel.publicUrl ? `${tunnel.publicUrl}/${encodedRoom}` : 'Tunnel active (fetching URL...)';
+      elements.btnCopyPublic.disabled = !tunnel.publicUrl;
+      elements.tunnelStatusHint.textContent = `Public link online. Share with friends anywhere in the world!`;
+    } else if (tunnel.status === 'starting') {
+      elements.tunnelBadge.classList.add('badge-partial');
+      elements.tunnelBadge.textContent = 'TUNNEL: STARTING...';
+      elements.tunnelBtnLabel.textContent = 'Starting...';
+      elements.tunnelBtnIcon.textContent = '⏳';
+      elements.inputPublicLink.value = 'Starting Cloudflare tunnel...';
+      elements.btnCopyPublic.disabled = true;
+      elements.tunnelStatusHint.textContent = 'Allocating secure Cloudflare edge connection...';
+    } else {
+      elements.tunnelBadge.classList.add('badge-offline');
+      elements.tunnelBadge.textContent = 'TUNNEL: OFF';
+      elements.tunnelBtnLabel.textContent = 'Enable Public Link';
+      elements.tunnelBtnIcon.textContent = '🌐';
+      elements.inputPublicLink.value = '';
+      elements.inputPublicLink.placeholder = "Tunnel disabled (Click 'Enable Public Link')";
+      elements.btnCopyPublic.disabled = true;
+      elements.tunnelStatusHint.textContent = 'Accessible from anywhere on the internet without router port forwarding.';
+    }
   });
 
   // Action Dispatchers
@@ -232,6 +359,54 @@
     });
   }
 
+  // Tunnel Controls
+  async function toggleTunnel() {
+    if (!currentUser) {
+      openAuthModal();
+      return;
+    }
+
+    const currentTunnel = state.tunnel || {};
+    if (currentTunnel.status === 'running' || currentTunnel.status === 'starting') {
+      try {
+        await api.stopTunnel();
+        await refreshTelemetry();
+      } catch (err) {
+        alert(`Failed to stop tunnel: ${err.message}`);
+      }
+    } else {
+      try {
+        state.update({ tunnel: { status: 'starting' } });
+        await api.startTunnel();
+        await refreshTelemetry();
+      } catch (err) {
+        alert(`Failed to start tunnel: ${err.message}`);
+        await refreshTelemetry();
+      }
+    }
+  }
+
+  function copyToClipboard(inputElement, btnElement) {
+    if (!inputElement.value) return;
+    navigator.clipboard.writeText(inputElement.value).then(() => {
+      const originalText = btnElement.textContent;
+      const originalAriaLabel = btnElement.getAttribute('aria-label');
+      btnElement.textContent = 'Copied!';
+      btnElement.setAttribute('aria-label', 'Copied to clipboard');
+      setTimeout(() => {
+        btnElement.textContent = originalText;
+        if (originalAriaLabel) {
+          btnElement.setAttribute('aria-label', originalAriaLabel);
+        } else {
+          btnElement.removeAttribute('aria-label');
+        }
+      }, 2000);
+    }).catch(() => {
+      inputElement.select();
+      document.execCommand('copy');
+    });
+  }
+
   // Bind Buttons
   elements.btnStart.addEventListener('click', () => triggerStackAction('Starting', () => api.startServices()));
   elements.btnStop.addEventListener('click', () => triggerStackAction('Stopping', () => api.stopServices()));
@@ -239,6 +414,12 @@
   elements.btnRefresh.addEventListener('click', refreshTelemetry);
   elements.btnFetchLogs.addEventListener('click', fetchLogs);
   elements.selectService.addEventListener('change', fetchLogs);
+  elements.btnToggleTunnel.addEventListener('click', toggleTunnel);
+  elements.btnCopyLocal.addEventListener('click', () => copyToClipboard(elements.inputLocalLink, elements.btnCopyLocal));
+  elements.btnCopyPublic.addEventListener('click', () => copyToClipboard(elements.inputPublicLink, elements.btnCopyPublic));
+  elements.btnUpdateRoom.addEventListener('click', () => {
+    state.notify();
+  });
 
   // Teardown Hygiene
   window.addEventListener('beforeunload', () => {

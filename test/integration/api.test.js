@@ -54,6 +54,24 @@ describe('Jitsi Dashboard API Integration Tests', () => {
     assert.ok('state' in res.json);
     assert.ok('isAllRunning' in res.json);
     assert.ok(Array.isArray(res.json.containers));
+    assert.ok(res.json.network);
+    assert.ok(res.json.network.primaryIp);
+    assert.ok(res.json.network.localDashboardUrl);
+    assert.ok(res.json.tunnel);
+    assert.equal(res.json.tunnel.status, 'stopped');
+    assert.ok(res.json.vitals);
+    assert.ok('docker' in res.json.vitals);
+    assert.ok('jitsiEnv' in res.json.vitals);
+    assert.ok('readiness' in res.json.vitals);
+  });
+
+  it('GET /api/v1/vitals returns 200 with system vitals payload', async () => {
+    const res = await makeRequest('/api/v1/vitals');
+    assert.equal(res.status, 200);
+    assert.ok(res.json);
+    assert.ok('docker' in res.json);
+    assert.ok('jitsiEnv' in res.json);
+    assert.ok('readiness' in res.json);
   });
 
   it('rejects unauthenticated mutating action with RFC 7807 401 Unauthorized', async () => {
@@ -89,5 +107,42 @@ describe('Jitsi Dashboard API Integration Tests', () => {
     const res = await makeRequest('/api/v1/services/web/restart', 'POST', null, authCookie);
     // Should be 200 (if docker runs) or 500 if docker error, but NOT 401!
     assert.notEqual(res.status, 401);
+  });
+
+  it('provides tunnel endpoints with authentication checks', async () => {
+    const unauthRes = await makeRequest('/api/v1/tunnel/start', 'POST', JSON.stringify({}));
+    assert.equal(unauthRes.status, 401);
+
+    const statusRes = await makeRequest('/api/v1/tunnel/status');
+    assert.equal(statusRes.status, 200);
+    assert.ok(statusRes.json);
+    assert.equal(statusRes.json.status, 'stopped');
+
+    const stopRes = await makeRequest('/api/v1/tunnel/stop', 'POST', null, authCookie);
+    assert.equal(stopRes.status, 200);
+    assert.equal(stopRes.json.status, 'stopped');
+
+    // Reject malformed JSON body
+    const badJsonRes = await makeRequest('/api/v1/tunnel/start', 'POST', 'not-valid-json{', authCookie);
+    assert.equal(badJsonRes.status, 400);
+    assert.equal(badJsonRes.json.title, 'Bad Request');
+
+    // Reject invalid targetUrl
+    const badUrlRes = await makeRequest('/api/v1/tunnel/start', 'POST', JSON.stringify({ targetUrl: 'not_a_valid_url' }), authCookie);
+    assert.equal(badUrlRes.status, 400);
+    assert.equal(badUrlRes.json.title, 'Bad Request');
+  });
+
+  it('provides static assets with proper headers', async () => {
+    const res = await makeRequest('/css/tokens.css');
+    assert.equal(res.status, 200);
+    assert.ok(res.headers['content-type'].includes('text/css'));
+    assert.ok(res.body.includes('--color-bg-canvas'));
+  });
+
+  it('rejects start service if service name is invalid', async () => {
+    const res = await makeRequest('/api/v1/services/invalid_service_xyz/restart', 'POST', null, authCookie);
+    assert.equal(res.status, 400);
+    assert.equal(res.json.title, 'Invalid Service Name');
   });
 });
