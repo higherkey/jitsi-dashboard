@@ -1,17 +1,17 @@
-# Contributing to Jitsi Deck
+# Contributing to Jitsi Dashboard
 
-Thank you for contributing to Jitsi Deck! We welcome bug fixes, documentation improvements, and feature contributions.
+Thank you for contributing to Jitsi Dashboard! We welcome bug fixes, documentation improvements, and feature contributions.
 
 ## Development Workflow
 
 1. **Prerequisites:**
-   - Node.js >= 20.0.0
-   - Docker and Docker Compose
+   - Node.js >= 22.5.0 (required for native `node:sqlite`)
+   - Docker and Docker Compose running your Jitsi Meet stack
 
 2. **Setup:**
    ```bash
-   git clone https://github.com/higherkey/jitsi-deck.git
-   cd jitsi-deck
+   git clone https://github.com/higherkey/jitsi-dashboard.git
+   cd jitsi-dashboard
    ```
 
 3. **Running Tests:**
