@@ -1,0 +1,43 @@
+name: Cleanup Branch Notes
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: cleanup-branch-notes-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove branch notes files
+        run: |
+          if [ -d "docs/branch-notes" ]; then
+            find docs/branch-notes/ -type f ! -name '.gitkeep' -delete
+          fi
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          if [[ -n $(git status --porcelain docs/branch-notes/) ]]; then
+            git add docs/branch-notes/
+            git commit -m "chore: Clean up merged branch notes"
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin ${{ github.ref_name }}
+          else
+            echo "No branch notes files to clean up."
+          fi

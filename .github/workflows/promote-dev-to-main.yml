@@ -1,0 +1,26 @@
+name: Promote Dev to Main
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate-dev-promotion:
+    name: Validate Dev-to-Main Pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Base and Head Branches
+        run: |
+          echo "PR Head Branch: ${{ github.head_ref }}"
+          echo "PR Base Branch: ${{ github.base_ref }}"
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "::warning::Only PRs from 'dev' branch are standard promotions to 'main'."
+          else
+            echo "Promotion from 'dev' to 'main' verified."
+          fi
